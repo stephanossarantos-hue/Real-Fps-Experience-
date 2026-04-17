@@ -1,77 +1,82 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Mobile FPS</title>
+  <title>City FPS Multiplayer</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
 
   <style>
-    body { margin: 0; overflow: hidden; touch-action: none; }
+    body { margin:0; overflow:hidden; touch-action:none; background:black; }
 
-    canvas { display: block; }
+    canvas { display:block; }
 
-    /* crosshair */
-    #crosshair {
-      position: absolute;
-      top: 50%;
-      left: 50%;
-      width: 8px;
-      height: 8px;
-      background: white;
-      border-radius: 50%;
-      transform: translate(-50%, -50%);
-      z-index: 10;
+    #crosshair{
+      position:absolute;
+      left:50%;
+      top:50%;
+      width:8px;
+      height:8px;
+      background:white;
+      border-radius:50%;
+      transform:translate(-50%,-50%);
+      z-index:10;
     }
 
-    /* fire button */
-    #fire {
-      position: absolute;
-      right: 20px;
-      bottom: 60px;
-      width: 80px;
-      height: 80px;
-      border-radius: 50%;
-      background: red;
-      color: white;
-      text-align: center;
-      line-height: 80px;
-      font-family: Arial;
-      user-select: none;
+    #fire{
+      position:absolute;
+      right:20px;
+      bottom:60px;
+      width:80px;
+      height:80px;
+      background:red;
+      border-radius:50%;
+      color:white;
+      text-align:center;
+      line-height:80px;
+      font-family:Arial;
+      user-select:none;
     }
 
-    /* joystick */
-    #joy {
-      position: absolute;
-      left: 20px;
-      bottom: 40px;
-      width: 120px;
-      height: 120px;
-      background: rgba(255,255,255,0.1);
-      border-radius: 50%;
+    #joy{
+      position:absolute;
+      left:20px;
+      bottom:40px;
+      width:120px;
+      height:120px;
+      background:rgba(255,255,255,0.1);
+      border-radius:50%;
     }
 
-    #stick {
-      position: absolute;
-      left: 40px;
-      top: 40px;
-      width: 40px;
-      height: 40px;
-      background: rgba(255,255,255,0.5);
-      border-radius: 50%;
+    #stick{
+      position:absolute;
+      left:40px;
+      top:40px;
+      width:40px;
+      height:40px;
+      background:white;
+      border-radius:50%;
     }
 
-    /* landscape warning */
-    #rotate {
-      position: fixed;
-      width: 100%;
-      height: 100%;
-      background: black;
-      color: white;
-      display: none;
-      justify-content: center;
-      align-items: center;
-      font-size: 20px;
-      z-index: 999;
+    #rotate{
+      position:fixed;
+      width:100%;
+      height:100%;
+      background:black;
+      color:white;
+      display:none;
+      justify-content:center;
+      align-items:center;
+      font-size:20px;
+      z-index:999;
     }
+
+    #weapons{
+      position:absolute;
+      top:10px;
+      left:10px;
+      z-index:10;
+    }
+
+    button{ margin:3px; padding:6px; }
   </style>
 </head>
 <body>
@@ -80,8 +85,12 @@
 <div id="crosshair"></div>
 <div id="fire">FIRE</div>
 
-<div id="joy">
-  <div id="stick"></div>
+<div id="joy"><div id="stick"></div></div>
+
+<div id="weapons">
+  <button onclick="setWeapon('ak')">AK</button>
+  <button onclick="setWeapon('sniper')">Sniper</button>
+  <button onclick="setWeapon('shotgun')">Shotgun</button>
 </div>
 
 <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
@@ -91,18 +100,177 @@
 const socket = io();
 
 /* ================= LANDSCAPE LOCK ================= */
-function checkOrientation(){
-  const r = document.getElementById("rotate");
-  if(window.innerHeight > window.innerWidth){
-    r.style.display = "flex";
-  } else {
-    r.style.display = "none";
-  }
+function check(){
+  document.getElementById("rotate").style.display =
+    (innerHeight > innerWidth) ? "flex" : "none";
 }
-window.addEventListener("resize", checkOrientation);
-checkOrientation();
+window.addEventListener("resize", check);
+check();
 
-/* ================= THREE ================= */
+/* ================= SCENE ================= */
+const scene = new THREE.Scene();
+
+/* 🌇 REAL SKY (NOT BLUE FLAT) */
+const loader = new THREE.CubeTextureLoader();
+scene.background = loader.load([
+  "https://threejs.org/examples/textures/cube/skybox/px.jpg",
+  "https://threejs.org/examples/textures/cube/skybox/nx.jpg",
+  "https://threejs.org/examples/textures/cube/skybox/py.jpg",
+  "https://threejs.org/examples/textures/cube/skybox/ny.jpg",
+  "https://threejs.org/examples/textures/cube/skybox/pz.jpg",
+  "https://threejs.org/examples/textures/cube/skybox/nz.jpg",
+]);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer({ antialias:true });
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+scene.add(new THREE.AmbientLight(0xffffff,1));
+
+/* ================= CITY MAP ================= */
+function addBuilding(x,z,sx,sy,sz,color){
+  const b = new THREE.Mesh(
+    new THREE.BoxGeometry(sx,sy,sz),
+    new THREE.MeshStandardMaterial({ color })
+  );
+  b.position.set(x, sy/2, z);
+  scene.add(b);
+}
+
+/* ground road */
+const road = new THREE.Mesh(
+  new THREE.PlaneGeometry(200,200),
+  new THREE.MeshStandardMaterial({ color:0x2d2d2d })
+);
+road.rotation.x = -Math.PI/2;
+scene.add(road);
+
+/* buildings */
+addBuilding(-10, -10, 5, 10, 5, 0x888888);
+addBuilding(10, -10, 6, 15, 6, 0x666666);
+addBuilding(-15, 15, 8, 20, 8, 0x555555);
+addBuilding(20, 20, 10, 25, 10, 0x777777);
+
+/* ================= PLAYER ================= */
+function createPlayer(color){
+  const g = new THREE.Group();
+
+  const body = new THREE.Mesh(
+    new THREE.CapsuleGeometry(0.5,1.2),
+    new THREE.MeshStandardMaterial({ color })
+  );
+  body.position.y = 1;
+  g.add(body);
+
+  scene.add(g);
+  return g;
+}
+
+const me = createPlayer(0x00aaff);
+
+/* FPS camera */
+camera.position.y = 1.7;
+
+/* ================= MOVEMENT ================= */
+let joy = {x:0,y:0};
+let stick = document.getElementById("stick");
+
+let dragging=false;
+
+document.getElementById("joy").addEventListener("touchstart", ()=>dragging=true);
+document.getElementById("joy").addEventListener("touchend", ()=>{
+  dragging=false; joy={x:0,y:0};
+  stick.style.transform="translate(0,0)";
+});
+
+document.getElementById("joy").addEventListener("touchmove", e=>{
+  if(!dragging) return;
+
+  let t=e.touches[0];
+  let dx=t.clientX-(innerWidth*0.15);
+  let dy=t.clientY-(innerHeight*0.8);
+
+  dx=Math.max(-50,Math.min(50,dx));
+  dy=Math.max(-50,Math.min(50,dy));
+
+  joy.x=dx/50;
+  joy.y=dy/50;
+
+  stick.style.transform=`translate(${dx}px,${dy}px)`;
+});
+
+/* LOOK */
+let yaw=0;
+
+document.addEventListener("mousemove", e=>{
+  yaw -= e.movementX*0.002;
+});
+
+/* ================= WEAPONS ================= */
+let weapon="ak";
+
+function setWeapon(w){
+  weapon=w;
+  socket.emit("weapon",w);
+}
+
+/* ================= SHOOT ================= */
+document.getElementById("fire").addEventListener("click",()=>{
+  socket.emit("shoot", me.position);
+});
+
+document.getElementById("fire").addEventListener("touchstart",()=>{
+  socket.emit("shoot", me.position);
+});
+
+/* ================= UPDATE ================= */
+function update(){
+
+  let speed=0.12;
+
+  me.position.x += Math.sin(yaw+Math.PI/2)*joy.x*speed;
+  me.position.z += Math.cos(yaw+Math.PI/2)*joy.x*speed;
+
+  me.position.x += Math.sin(yaw)*-joy.y*speed;
+  me.position.z += Math.cos(yaw)*-joy.y*speed;
+
+  camera.position.set(me.position.x, me.position.y+1.7, me.position.z);
+  camera.rotation.y=yaw;
+
+  socket.emit("move",me.position);
+}
+
+/* ================= MULTIPLAYER ================= */
+let players={};
+
+socket.on("init",data=>{
+  for(let id in data){
+    if(id!==socket.id){
+      let p=createPlayer(0xff4444);
+      players[id]=p;
+    }
+  }
+});
+
+socket.on("move",d=>{
+  if(players[d.id]){
+    players[d.id].position.set(d.data.x,0,d.data.z);
+  }
+});
+
+/* ================= LOOP ================= */
+function animate(){
+  requestAnimationFrame(animate);
+  update();
+  renderer.render(scene,camera);
+}
+
+animate();
+</script>
+
+</body>
+</html>/* ================= THREE ================= */
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x87ceeb);
 
