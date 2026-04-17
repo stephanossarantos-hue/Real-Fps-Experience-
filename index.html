@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Multiplayer FPS</title>
+  <style>
+    body { margin: 0; overflow: hidden; font-family: Arial; }
+
+    #ui {
+      position: absolute;
+      bottom: 20px;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+      gap: 10px;
+      z-index: 10;
+    }
+
+    button {
+      padding: 10px;
+      font-size: 14px;
+    }
+
+    #mobile {
+      position: absolute;
+      bottom: 20px;
+      left: 20px;
+      display: grid;
+      grid-template-columns: 50px 50px 50px;
+      gap: 5px;
+      z-index: 10;
+    }
+
+    .pad {
+      width: 50px;
+      height: 50px;
+      background: rgba(255,255,255,0.2);
+      color: white;
+      text-align: center;
+      line-height: 50px;
+    }
+
+    #shoot {
+      position: absolute;
+      right: 20px;
+      bottom: 80px;
+      width: 80px;
+      height: 80px;
+      background: red;
+      border-radius: 50%;
+      color: white;
+      text-align: center;
+      line-height: 80px;
+      z-index: 10;
+    }
+  </style>
+</head>
+<body>
+
+<div id="ui">
+  <button onclick="setWeapon('ak')">AK</button>
+  <button onclick="setWeapon('sniper')">Sniper</button>
+  <button onclick="setWeapon('shotgun')">Shotgun</button>
+</div>
+
+<div id="mobile">
+  <div></div>
+  <div class="pad" onclick="move('up')">↑</div>
+  <div></div>
+  <div class="pad" onclick="move('left')">←</div>
+  <div class="pad" onclick="move('down')">↓</div>
+  <div class="pad" onclick="move('right')">→</div>
+</div>
+
+<div id="shoot">FIRE</div>
+
+<script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+
+<script>
+const socket = io();
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x87ceeb);
+
+const camera = new THREE.PerspectiveCamera(75, innerWidth/innerHeight, 0.1, 1000);
+const renderer = new THREE.WebGLRenderer();
+renderer.setSize(innerWidth, innerHeight);
+document.body.appendChild(renderer.domElement);
+
+// ground
+const ground = new THREE.Mesh(
+  new THREE.PlaneGeometry(100,100),
+  new THREE.MeshBasicMaterial({ color: 0x228B22 })
+);
+ground.rotation.x = -Math.PI/2;
+scene.add(ground);
+
+let players = {};
+let me = createPlayer(0x0000ff);
+camera.position.y = 2;
+
+function createPlayer(color) {
+  const m = new THREE.Mesh(
+    new THREE.BoxGeometry(1,1,1),
+    new THREE.MeshBasicMaterial({ color })
+  );
+  scene.add(m);
+  return m;
+}
+
+// movement
+let moveDir = { x:0, z:0 };
+
+function move(dir){
+  if(dir==="up") moveDir.z = -0.1;
+  if(dir==="down") moveDir.z = 0.1;
+  if(dir==="left") moveDir.x = -0.1;
+  if(dir==="right") moveDir.x = 0.1;
+}
+
+function update(){
+  me.position.x += moveDir.x;
+  me.position.z += moveDir.z;
+
+  camera.position.x = me.position.x;
+  camera.position.z = me.position.z + 5;
+
+  socket.emit("move", me.position);
+}
+
+// shoot
+document.getElementById("shoot").onclick = () => {
+  socket.emit("shoot", me.position);
+};
+
+// weapons
+function setWeapon(w){
+  socket.emit("weaponChange", w);
+}
+
+// players sync
+socket.on("init", (data) => {
+  for(let id in data){
+    if(id !== socket.id){
+      players[id] = createPlayer(data[id].skin);
+    }
+  }
+});
+
+socket.on("newPlayer", (d) => {
+  players[d.id] = createPlayer(d.data.skin);
+});
+
+socket.on("move", (d) => {
+  if(players[d.id]){
+    players[d.id].position.set(d.data.x,1,d.data.z);
+  }
+});
+
+socket.on("hit", (d) => {
+  console.log("HP update", d);
+});
+
+socket.on("death", (id) => {
+  if(players[id]){
+    scene.remove(players[id]);
+    delete players[id];
+  }
+});
+
+socket.on("remove", (id) => {
+  if(players[id]){
+    scene.remove(players[id]);
+    delete players[id];
+  }
+});
+
+function animate(){
+  requestAnimationFrame(animate);
+  update();
+  renderer.render(scene,camera);
+}
+
+animate();
+</script>
+
+</body>
+</html>
